@@ -110,7 +110,7 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(principal);
         String refreshTokenValue = jwtService.generateRefreshToken(principal);
 
-        refreshTokenRepository.revokeAllByUser(user);
+        refreshTokenRepository.deleteByUser(user);
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .token(refreshTokenValue)

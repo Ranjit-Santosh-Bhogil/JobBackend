@@ -7,6 +7,7 @@ import com.ranjit.jobportal.entity.User;
 import com.ranjit.jobportal.enums.JobType;
 import com.ranjit.jobportal.enums.Role;
 import com.ranjit.jobportal.exception.ApiException;
+import com.ranjit.jobportal.repository.JobApplicationRepository;
 import com.ranjit.jobportal.repository.JobRepository;
 import com.ranjit.jobportal.repository.UserRepository;
 import com.ranjit.jobportal.security.SecurityUtils;
@@ -28,6 +29,7 @@ public class JobService {
 
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
+    private final JobApplicationRepository applicationRepository;
 
     @Transactional(readOnly = true)
     public Page<JobResponse> searchJobs(
@@ -90,6 +92,7 @@ public class JobService {
     @Transactional
     public void deleteJob(Long id) {
         Job job = getJobForModification(id);
+        applicationRepository.deleteByJob(job);
         jobRepository.delete(job);
     }
 

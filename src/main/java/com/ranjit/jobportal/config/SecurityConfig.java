@@ -2,11 +2,15 @@ package com.ranjit.jobportal.config;
 
 import com.ranjit.jobportal.security.CustomUserDetailsService;
 import com.ranjit.jobportal.security.JwtAuthenticationFilter;
+import com.ranjit.jobportal.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -24,6 +28,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.Arrays;
 import java.util.List;
 
@@ -35,6 +40,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CustomUserDetailsService userDetailsService;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -43,9 +49,32 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .anonymous(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+                            if (authentication == null
+                                    || !authentication.isAuthenticated()
+                                    || authentication instanceof AnonymousAuthenticationToken) {
+                                authenticationEntryPoint.commence(
+                                        request,
+                                        response,
+                                        new org.springframework.security.authentication.InsufficientAuthenticationException(
+                                                "Authentication required"
+                                        )
+                                );
+                                return;
+                            }
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json");
+                            response.getWriter().write(
+                                    "{\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied\"}"
+                            );
+                        }))
                 .authorizeHttpRequests(auth -> auth
                         // Authentication endpoints are public because they create or refresh JWTs.
                         .requestMatchers("/auth/login", "/auth/register", "/auth/refresh").permitAll()
@@ -81,7 +110,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         // Allows the Vite frontend to call the API during local development.
-        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        configuration.setAllowedOriginPatterns(buildAllowedOriginPatterns());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
@@ -89,6 +118,13 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private List<String> buildAllowedOriginPatterns() {
+        List<String> patterns = new java.util.ArrayList<>(Arrays.asList(allowedOrigins.split(",")));
+        patterns.add("http://localhost:*");
+        patterns.add("http://127.0.0.1:*");
+        return patterns;
     }
 
     @Bean
